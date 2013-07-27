@@ -15,24 +15,24 @@
  */
 package org.atmosphere.samples.chat;
 
-import org.atmosphere.config.managed.Decoder;
-import org.codehaus.jackson.map.ObjectMapper;
-
 import java.io.IOException;
+
+import org.atmosphere.config.managed.Converter;
+import org.codehaus.jackson.map.ObjectMapper;
 
 /**
  * Decode a String into a {@link Message}.
  */
-public class JacksonDecoder implements Decoder<String, Message> {
+public class JacksonDecoder implements Converter<String> {
 
-    private final ObjectMapper mapper = new ObjectMapper();
+  private final ObjectMapper mapper = new ObjectMapper();
 
-    @Override
-    public Message decode(String s) {
-        try {
-            return mapper.readValue(s, Message.class);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+  @Override
+  public Object convert(String s, Class<?> convertToType) {
+    try {
+      return mapper.readValue(s, convertToType);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
+  }
 }

@@ -15,97 +15,97 @@
  */
 package org.atmosphere.samples.chat;
 
-import org.atmosphere.cpr.Broadcaster;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
-public class ChatProtocol implements JacksonEncoder.Encodable {
+import org.atmosphere.cpr.Broadcaster;
 
-    private String message;
-    private String author;
-    private long time;
-    private List<String> users = new ArrayList<String>();
-    private List<String> rooms = new ArrayList<String>();
-    private String uuid;
+public class ChatProtocol {
 
-    public ChatProtocol() {
-        this("", "");
+  private String message;
+  private String author;
+  private long time;
+  private List<String> users = new ArrayList<String>();
+  private List<String> rooms = new ArrayList<String>();
+  private String uuid;
+
+  public ChatProtocol() {
+    this("", "");
+  }
+
+  public ChatProtocol(String author, String message) {
+    this.author = author;
+    this.message = message;
+    this.time = new Date().getTime();
+  }
+
+  public ChatProtocol(String author, String message, Collection<String> users, Collection<Broadcaster> rooms) {
+    this(author, message);
+    this.users.addAll(users);
+    for(Broadcaster b: rooms) {
+      this.rooms.add(b.getID().toString());
     }
+  }
 
-    public ChatProtocol(String author, String message) {
-        this.author = author;
-        this.message = message;
-        this.time = new Date().getTime();
+  public ChatProtocol(Collection<String> users, Collection<Broadcaster> rooms) {
+    this.users.addAll(users);
+    for(Broadcaster b: rooms) {
+      this.rooms.add(b.getID().toString());
     }
+  }
 
-    public ChatProtocol(String author, String message, Collection<String> users, Collection<Broadcaster> rooms) {
-        this(author, message);
-        this.users.addAll(users);
-        for(Broadcaster b: rooms) {
-            this.rooms.add(b.getID().toString());
-        }
-    }
+  public String getMessage() {
+    return message;
+  }
 
-    public ChatProtocol(Collection<String> users, Collection<Broadcaster> rooms) {
-        this.users.addAll(users);
-        for(Broadcaster b: rooms) {
-            this.rooms.add(b.getID().toString());
-        }
-    }
+  public String getAuthor() {
+    return author;
+  }
 
-    public String getMessage() {
-        return message;
-    }
+  public void setAuthor(String author) {
+    this.author = author;
+  }
 
-    public String getAuthor() {
-        return author;
-    }
+  public void setMessage(String message) {
+    this.message = message;
+  }
 
-    public void setAuthor(String author) {
-        this.author = author;
-    }
+  public long getTime() {
+    return time;
+  }
 
-    public void setMessage(String message) {
-        this.message = message;
-    }
+  public void setTime(long time) {
+    this.time = time;
+  }
 
-    public long getTime() {
-        return time;
-    }
+  public List<String> getUsers() {
+    return users;
+  }
 
-    public void setTime(long time) {
-        this.time = time;
-    }
+  public void setUsers(Collection<String> users) {
+    this.users.addAll(users);
+  }
 
-    public List<String> getUsers() {
-        return users;
-    }
+  public void setUsers(List<String> users) {
+    this.users = users;
+  }
 
-    public void setUsers(Collection<String> users) {
-        this.users.addAll(users);
-    }
+  public String getUuid() {
+    return uuid;
+  }
 
-    public void setUsers(List<String> users) {
-        this.users = users;
-    }
+  public void setUuid(String uuid) {
+    this.uuid = uuid;
+  }
 
-    public String getUuid() {
-        return uuid;
-    }
+  public List<String> getRooms() {
+    return rooms;
+  }
 
-    public void setUuid(String uuid) {
-        this.uuid = uuid;
-    }
-
-    public List<String> getRooms() {
-        return rooms;
-    }
-
-    public void setRooms(List<String> rooms) {
-        this.rooms = rooms;
-    }
+  public void setRooms(List<String> rooms) {
+    this.rooms = rooms;
+  }
 
 }

@@ -15,6 +15,17 @@
  */
 package org.atmosphere.config.managed;
 
+import java.io.IOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+
 import org.atmosphere.config.service.Delete;
 import org.atmosphere.config.service.Disconnect;
 import org.atmosphere.config.service.Get;
@@ -36,17 +47,6 @@ import org.atmosphere.handler.AnnotatedProxy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-
 /**
  * An internal implementation of {@link AtmosphereHandler} that implement supports for Atmosphere 1.1 annotation.
  *
@@ -54,274 +54,274 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ManagedAtmosphereHandler extends AbstractReflectorAtmosphereHandler implements AnnotatedProxy {
 
-    private Logger logger = LoggerFactory.getLogger(ManagedAtmosphereHandler.class);
-    private final static List<Decoder<?,?>> EMPTY = Collections.<Decoder<?,?>>emptyList();
-    private final Object object;
-    private final List<Method> onRuntimeMethod;
-    private final Method onDisconnectMethod;
-    private final Method onTimeoutMethod;
-    private final Method onGetMethod;
-    private final Method onPostMethod;
-    private final Method onPutMethod;
-    private final Method onDeleteMethod;
-    private final Method onReadyMethod;
-    private final Method onResumeMethod;
+  private final Logger logger = LoggerFactory.getLogger(ManagedAtmosphereHandler.class);
+  private final static List<Converter<?>> EMPTY = Collections.<Converter<?>>emptyList();
+  private final Object object;
+  private final List<Method> onRuntimeMethod;
+  private final Method onDisconnectMethod;
+  private final Method onTimeoutMethod;
+  private final Method onGetMethod;
+  private final Method onPostMethod;
+  private final Method onPutMethod;
+  private final Method onDeleteMethod;
+  private final Method onReadyMethod;
+  private final Method onResumeMethod;
 
-    final Map<Method, List<Encoder<?, ?>>> encoders = new HashMap<Method, List<Encoder<?, ?>>>();
-    final Map<Method, List<Decoder<?, ?>>> decoders = new HashMap<Method, List<Decoder<?, ?>>>();
+  final Map<Method, List<Converter<?>>> encoders = new HashMap<Method, List<Converter<?>>>();
+  final Map<Method, List<Converter<?>>> decoders = new HashMap<Method, List<Converter<?>>>();
 
-    public ManagedAtmosphereHandler(Object c) {
-        this.object = c;
-        this.onRuntimeMethod = populateMessage(c, Message.class);
-        this.onDisconnectMethod = populate(c, Disconnect.class);
-        this.onTimeoutMethod = populate(c, Resume.class);
-        this.onGetMethod = populate(c, Get.class);
-        this.onPostMethod = populate(c, Post.class);
-        this.onPutMethod = populate(c, Put.class);
-        this.onDeleteMethod = populate(c, Delete.class);
-        this.onReadyMethod = populate(c, Ready.class);
-        this.onResumeMethod = populate(c, Resume.class);
+  public ManagedAtmosphereHandler(Object c) {
+    this.object = c;
+    this.onRuntimeMethod = populateMessage(c, Message.class);
+    this.onDisconnectMethod = populate(c, Disconnect.class);
+    this.onTimeoutMethod = populate(c, Resume.class);
+    this.onGetMethod = populate(c, Get.class);
+    this.onPostMethod = populate(c, Post.class);
+    this.onPutMethod = populate(c, Put.class);
+    this.onDeleteMethod = populate(c, Delete.class);
+    this.onReadyMethod = populate(c, Ready.class);
+    this.onResumeMethod = populate(c, Resume.class);
 
-        if (onRuntimeMethod.size() > 0) {
-            populateEncoders();
-            populateDecoders();
+    if (onRuntimeMethod.size() > 0) {
+      populateEncoders();
+      populateDecoders();
+    }
+  }
+
+  @Override
+  public void onRequest(final AtmosphereResource resource) throws IOException {
+    AtmosphereRequest request = resource.getRequest();
+    String method = request.getMethod();
+
+    if (onReadyMethod != null) {
+      resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
+        @Override
+        public void onSuspend(AtmosphereResourceEvent event) {
+          processReady(event.getResource());
+          event.getResource().removeEventListener(this);
         }
+      });
     }
 
-    @Override
-    public void onRequest(final AtmosphereResource resource) throws IOException {
-        AtmosphereRequest request = resource.getRequest();
-        String method = request.getMethod();
-
-        if (onReadyMethod != null) {
-            resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                @Override
-                public void onSuspend(AtmosphereResourceEvent event) {
-                    processReady(event.getResource());
-                    event.getResource().removeEventListener(this);
-                }
-            });
+    if (onResumeMethod != null) {
+      resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
+        @Override
+        public void onResume(AtmosphereResourceEvent event) {
+          invoke(onResumeMethod, event.getResource());
+          resource.removeEventListener(this);
         }
-
-        if (onResumeMethod != null) {
-            resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                @Override
-                public void onResume(AtmosphereResourceEvent event) {
-                    invoke(onResumeMethod, event.getResource());
-                    resource.removeEventListener(this);
-                }
-            });
-        }
-
-        if (method.equalsIgnoreCase("get")) {
-            invoke(onGetMethod, resource);
-        } else if (method.equalsIgnoreCase("post")) {
-            invoke(onPostMethod, resource);
-        } else if (method.equalsIgnoreCase("delete")) {
-            invoke(onDeleteMethod, resource);
-        } else if (method.equalsIgnoreCase("put")) {
-            invoke(onPutMethod, resource);
-        }
+      });
     }
 
-    @Override
-    @SuppressWarnings("unchecked")
-    public void onStateChange(AtmosphereResourceEvent event) throws IOException {
+    if (method.equalsIgnoreCase("get")) {
+      invoke(onGetMethod, resource);
+    } else if (method.equalsIgnoreCase("post")) {
+      invoke(onPostMethod, resource);
+    } else if (method.equalsIgnoreCase("delete")) {
+      invoke(onDeleteMethod, resource);
+    } else if (method.equalsIgnoreCase("put")) {
+      invoke(onPutMethod, resource);
+    }
+  }
 
-        // Original Value
-        AtmosphereResourceImpl r = AtmosphereResourceImpl.class.cast(event.getResource());
-        Boolean resumeOnBroadcast = r.resumeOnBroadcast();
-        if (!resumeOnBroadcast) {
-            // For legacy reason, check the attribute as well
-            Object o = r.getRequest(false).getAttribute(ApplicationConfig.RESUME_ON_BROADCAST);
-            if (o != null && Boolean.class.isAssignableFrom(o.getClass())) {
-                resumeOnBroadcast = Boolean.class.cast(o);
-            }
-        }
+  @Override
+  public void onStateChange(AtmosphereResourceEvent event) throws IOException {
 
-        // Disable resume so cached message can be send in one chunk.
-        if (resumeOnBroadcast) {
-            r.resumeOnBroadcast(false);
-            r.getRequest(false).setAttribute(ApplicationConfig.RESUME_ON_BROADCAST, false);
-        }
-
-        if (event.isCancelled() || event.isClosedByClient()) {
-            invoke(onDisconnectMethod, event);
-        } else if (event.isResumedOnTimeout() || event.isResuming()) {
-            invoke(onTimeoutMethod, event);
-        } else {
-            Object msg = event.getMessage();
-            Object o;
-            // No method matched. Give a last chance by trying to decode the object.
-            // This makes application development more simpler.
-            // Chaining of encoder is not supported.
-            // TODO: This could be problematic with String + method
-            for (Method m : onRuntimeMethod) {
-                o = Invoker.encode(encoders.get(m), msg);
-                if (o != null) {
-                    event.setMessage(o);
-                    break;
-                }
-            }
-
-            super.onStateChange(event);
-        }
-
-        if (resumeOnBroadcast && r.isSuspended()) {
-            r.resume();
-        }
+    // Original Value
+    AtmosphereResourceImpl r = AtmosphereResourceImpl.class.cast(event.getResource());
+    Boolean resumeOnBroadcast = r.resumeOnBroadcast();
+    if (!resumeOnBroadcast) {
+      // For legacy reason, check the attribute as well
+      Object o = r.getRequest(false).getAttribute(ApplicationConfig.RESUME_ON_BROADCAST);
+      if (o != null && Boolean.class.isAssignableFrom(o.getClass())) {
+        resumeOnBroadcast = Boolean.class.cast(o);
+      }
     }
 
-    public Object invoke(Object msg) throws IOException {
-        Object o = message(msg);
+    // Disable resume so cached message can be send in one chunk.
+    if (resumeOnBroadcast) {
+      r.resumeOnBroadcast(false);
+      r.getRequest(false).setAttribute(ApplicationConfig.RESUME_ON_BROADCAST, false);
+    }
 
+    if (event.isCancelled() || event.isClosedByClient()) {
+      invoke(onDisconnectMethod, event);
+    } else if (event.isResumedOnTimeout() || event.isResuming()) {
+      invoke(onTimeoutMethod, event);
+    } else {
+      Object msg = event.getMessage();
+      Object o;
+      // No method matched. Give a last chance by trying to decode the object.
+      // This makes application development more simpler.
+      // Chaining of encoder is not supported.
+      // TODO: This could be problematic with String + method
+      for (Method m : onRuntimeMethod) {
+        o = Invoker.convert(encoders.get(m), msg, m.getReturnType());
         if (o != null) {
-            return o;
-        } else if (onRuntimeMethod.size() == 0) {
-            return msg;
+          event.setMessage(o);
+          break;
         }
-        return o;
+      }
+
+      super.onStateChange(event);
     }
 
-    private Method populate(Object c, Class<? extends Annotation> annotation) {
-        for (Method m : c.getClass().getMethods()) {
-            if (m.isAnnotationPresent(annotation)) {
-                return m;
-            }
-        }
-        return null;
+    if (resumeOnBroadcast && r.isSuspended()) {
+      r.resume();
     }
+  }
 
-    private List<Method> populateMessage(Object c, Class<? extends Annotation> annotation) {
-        ArrayList<Method> methods = new ArrayList<Method>();
-        for (Method m : c.getClass().getMethods()) {
-            if (m.isAnnotationPresent(annotation)) {
-                methods.add(m);
-            }
-        }
-        return methods;
+  public Object invoke(Object msg) throws IOException {
+    Object o = message(msg);
+
+    if (o != null) {
+      return o;
+    } else if (onRuntimeMethod.size() == 0) {
+      return msg;
     }
+    return o;
+  }
 
-    private void populateEncoders() {
-        for (Method m: onRuntimeMethod) {
-            List<Encoder<?, ?>> l = new CopyOnWriteArrayList<Encoder<?, ?>>();
-            for (Class<? extends Encoder> s : m.getAnnotation(Message.class).encoders()) {
-                try {
-                    l.add(s.newInstance());
-                } catch (Exception e) {
-                    logger.error("Unable to load encoder {}", s);
-                }
-            }
-            encoders.put(m, l);
-        }
-
-        if (onReadyMethod != null) {
-            List<Encoder<?, ?>> l = new CopyOnWriteArrayList<Encoder<?, ?>>();
-            for (Class<? extends Encoder> s : onReadyMethod.getAnnotation(Ready.class).encoders()) {
-                try {
-                    l.add(s.newInstance());
-                } catch (Exception e) {
-                    logger.error("Unable to load encoder {}", s);
-                }
-            }
-            encoders.put(onReadyMethod, l);
-        }
+  private Method populate(Object c, Class<? extends Annotation> annotation) {
+    for (Method m : c.getClass().getMethods()) {
+      if (m.isAnnotationPresent(annotation)) {
+        return m;
+      }
     }
+    return null;
+  }
 
-    private void populateDecoders() {
-        for (Method m: onRuntimeMethod) {
-            List<Decoder<?, ?>> l = new CopyOnWriteArrayList<Decoder<?, ?>>();
-            for (Class<? extends Decoder> s : m.getAnnotation(Message.class).decoders()) {
-                try {
-                    l.add(s.newInstance());
-                } catch (Exception e) {
-                    logger.error("Unable to load encoder {}", s);
-                }
-            }
-            decoders.put(m, l);
-        }
+  private List<Method> populateMessage(Object c, Class<? extends Annotation> annotation) {
+    ArrayList<Method> methods = new ArrayList<Method>();
+    for (Method m : c.getClass().getMethods()) {
+      if (m.isAnnotationPresent(annotation)) {
+        methods.add(m);
+      }
     }
+    return methods;
+  }
 
-    protected Class<?> loadClass(String className) throws Exception {
+  private void populateEncoders() {
+    for (Method m: onRuntimeMethod) {
+      List<Converter<?>> l = new CopyOnWriteArrayList<Converter<?>>();
+      for (Class<? extends Converter<?>> s : m.getAnnotation(Message.class).encoders()) {
         try {
-            return Thread.currentThread().getContextClassLoader().loadClass(className);
-        } catch (Throwable t) {
-            return getClass().getClassLoader().loadClass(className);
+          l.add(s.newInstance());
+        } catch (Exception e) {
+          logger.error("Unable to load encoder {}", s);
         }
+      }
+      encoders.put(m, l);
     }
 
-    private Object invoke(Method m, Object o) {
-        if (m != null) {
-            try {
-                return m.invoke(object, o == null ? new Object[]{} : new Object[]{o});
-            } catch (IllegalAccessException e) {
-                logger.debug("", e);
-            } catch (InvocationTargetException e) {
-                logger.debug("", e);
-            }
-        }
-        return null;
-    }
-
-    private Object message(Object o) {
+    if (onReadyMethod != null) {
+      List<Converter<?>> l = new CopyOnWriteArrayList<Converter<?>>();
+      for (Class<? extends Converter<?>> s : onReadyMethod.getAnnotation(Ready.class).encoders()) {
         try {
-            for (Method m : onRuntimeMethod) {
-                Object decoded = Invoker.decode(decoders.get(m), o);
-                if (decoded == null) {
-                    decoded = o;
-                }
-
-                Object objectToEncode = Invoker.invokeMethod(m, object, decoded);
-                if (objectToEncode != null) {
-                    return Invoker.encode(encoders.get(m), objectToEncode);
-                }
-            }
-        } catch (Throwable t) {
-            logger.error("",t);
+          l.add(s.newInstance());
+        } catch (Exception e) {
+          logger.error("Unable to load encoder {}", s);
         }
-        return null;
+      }
+      encoders.put(onReadyMethod, l);
     }
+  }
 
-    private Object message(Method m, Object o) {
-        if (m != null) {
-            return Invoker.all(encoders.get(m), EMPTY, o, object, m);
+  private void populateDecoders() {
+    for (Method m: onRuntimeMethod) {
+      List<Converter<?>> l = new CopyOnWriteArrayList<Converter<?>>();
+      Message annotation = m.getAnnotation(Message.class);
+      for (Class<? extends Converter<?>> s : annotation.decoders()) {
+        try {
+          l.add(s.newInstance());
+        } catch (Exception e) {
+          logger.error("Unable to load encoder {}", s);
         }
-        return null;
+      }
+      decoders.put(m, l);
     }
+  }
 
-    @Override
-    public Object target() {
-        return object;
+  protected Class<?> loadClass(String className) throws Exception {
+    try {
+      return Thread.currentThread().getContextClassLoader().loadClass(className);
+    } catch (Throwable t) {
+      return getClass().getClassLoader().loadClass(className);
     }
+  }
 
-    protected void processReady(AtmosphereResource r) {
-        Object o = message(onReadyMethod, r);
+  private Object invoke(Method m, Object o) {
+    if (m != null) {
+      try {
+        return m.invoke(object, o == null ? new Object[]{} : new Object[]{o});
+      } catch (IllegalAccessException e) {
+        logger.debug("", e);
+      } catch (InvocationTargetException e) {
+        logger.debug("", e);
+      }
+    }
+    return null;
+  }
 
-        switch (onReadyMethod.getAnnotation(Ready.class).value()) {
-            case RESOURCE:
-                if (o != null) {
-                    if (String.class.isAssignableFrom(o.getClass())) {
-                        r.write(o.toString());
-                    } else if (byte[].class.isAssignableFrom(o.getClass())) {
-                        r.write((byte[]) o);
-                    }
-                }
-                break;
-            case BROADCASTER:
-                r.getBroadcaster().broadcast(o);
-                break;
-            case ALL:
-                for (Broadcaster b : r.getAtmosphereConfig().getBroadcasterFactory().lookupAll()) {
-                    b.broadcast(o);
-                }
-                break;
-
+  private Object message(Object o) {
+    try {
+      for (Method m : onRuntimeMethod) {
+        Object decoded = Invoker.convert(decoders.get(m), o, m.getParameterTypes()[0]);
+        if (decoded == null) {
+          decoded = o;
         }
-    }
 
-    @Override
-    public String toString(){
-        return "ManagedAtmosphereHandler proxy for " + object.getClass().getName();
+        Object objectToEncode = Invoker.invokeMethod(m, object, decoded);
+        if (objectToEncode != null) {
+          return Invoker.convert(encoders.get(m), objectToEncode, m.getReturnType());
+        }
+      }
+    } catch (Throwable t) {
+      logger.error("",t);
     }
+    return null;
+  }
+
+  private Object message(Method m, Object o) {
+    if (m != null) {
+      return Invoker.all(encoders.get(m), EMPTY, o, object, m);
+    }
+    return null;
+  }
+
+  @Override
+  public Object target() {
+    return object;
+  }
+
+  protected void processReady(AtmosphereResource r) {
+    Object o = message(onReadyMethod, r);
+
+    switch (onReadyMethod.getAnnotation(Ready.class).value()) {
+    case RESOURCE:
+      if (o != null) {
+        if (String.class.isAssignableFrom(o.getClass())) {
+          r.write(o.toString());
+        } else if (byte[].class.isAssignableFrom(o.getClass())) {
+          r.write((byte[]) o);
+        }
+      }
+      break;
+    case BROADCASTER:
+      r.getBroadcaster().broadcast(o);
+      break;
+    case ALL:
+      for (Broadcaster b : r.getAtmosphereConfig().getBroadcasterFactory().lookupAll()) {
+        b.broadcast(o);
+      }
+      break;
+
+    }
+  }
+
+  @Override
+  public String toString(){
+    return "ManagedAtmosphereHandler proxy for " + object.getClass().getName();
+  }
 
 }

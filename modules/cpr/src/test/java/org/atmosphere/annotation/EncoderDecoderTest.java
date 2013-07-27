@@ -15,8 +15,21 @@
  */
 package org.atmosphere.annotation;
 
-import org.atmosphere.config.managed.Decoder;
-import org.atmosphere.config.managed.Encoder;
+import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+
+import java.io.IOException;
+import java.util.Enumeration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+
+import org.atmosphere.config.managed.Converter;
 import org.atmosphere.config.service.Get;
 import org.atmosphere.config.service.ManagedService;
 import org.atmosphere.config.service.Message;
@@ -36,229 +49,217 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import javax.servlet.ServletConfig;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-import java.io.IOException;
-import java.util.Enumeration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.mockito.Mockito.mock;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-
 public class EncoderDecoderTest {
-    private AtmosphereFramework framework;
-    private static final AtomicReference<AtmosphereResource> r = new AtomicReference<AtmosphereResource>();
-    private static final AtomicReference<String> message = new AtomicReference<String>();
-    private static final AtomicReference<CountDownLatch> latch = new AtomicReference(1);
+  private AtmosphereFramework framework;
+  private static final AtomicReference<AtmosphereResource> r = new AtomicReference<AtmosphereResource>();
+  private static final AtomicReference<String> message = new AtomicReference<String>();
+  private static final AtomicReference<CountDownLatch> latch = new AtomicReference<CountDownLatch>();
 
-    @BeforeMethod
-    public void create() throws Throwable {
-        framework = new AtmosphereFramework();
-        framework.setDefaultBroadcasterClassName(SimpleBroadcaster.class.getName());
-        framework.addAnnotationPackage(ManagedMessage.class);
-        framework.setAsyncSupport(new AsynchronousProcessor(framework.getAtmosphereConfig()) {
+  @BeforeMethod
+  public void create() throws Throwable {
+    framework = new AtmosphereFramework();
+    framework.setDefaultBroadcasterClassName(SimpleBroadcaster.class.getName());
+    framework.addAnnotationPackage(ManagedMessage.class);
+    framework.setAsyncSupport(new AsynchronousProcessor(framework.getAtmosphereConfig()) {
 
-            @Override
-            public Action service(AtmosphereRequest req, AtmosphereResponse res) throws IOException, ServletException {
-                return suspended(req, res);
-            }
+      @Override
+      public Action service(AtmosphereRequest req, AtmosphereResponse res) throws IOException, ServletException {
+        return suspended(req, res);
+      }
 
-            public void action(AtmosphereResourceImpl r) {
-                try {
-                    resumed(r.getRequest(), r.getResponse());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (ServletException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).init(new ServletConfig() {
-            @Override
-            public String getServletName() {
-                return "void";
-            }
-
-            @Override
-            public ServletContext getServletContext() {
-                return mock(ServletContext.class);
-            }
-
-            @Override
-            public String getInitParameter(String name) {
-                return null;
-            }
-
-            @Override
-            public Enumeration<String> getInitParameterNames() {
-                return null;
-            }
-        });
-        latch.set(new CountDownLatch(1));
-    }
-
-    @AfterMethod
-    public void after() {
-        r.set(null);
-        framework.destroy();
-    }
-
-    @ManagedService(path = "/f")
-    public final static class ManagedMessage {
-
-        @Get
-        public void get(AtmosphereResource resource) {
-            r.set(resource);
-            resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                @Override
-                public void onSuspend(AtmosphereResourceEvent event) {
-                    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/f").method("POST").body("message").build();
-                    try {
-                        event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } catch (ServletException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }).suspend();
-
+      @Override
+      public void action(AtmosphereResourceImpl r) {
+        try {
+          resumed(r.getRequest(), r.getResponse());
+        } catch (IOException e) {
+          e.printStackTrace();
+        } catch (ServletException e) {
+          e.printStackTrace();
         }
+      }
+    }).init(new ServletConfig() {
+      @Override
+      public String getServletName() {
+        return "void";
+      }
 
-        @Message(encoders = {StringBufferEncoder.class}, decoders = {StringBufferDecoder.class})
-        public void message(StringBuffer m) {
-            message.set(m.toString());
-        }
-    }
+      @Override
+      public ServletContext getServletContext() {
+        return mock(ServletContext.class);
+      }
 
-    @ManagedService(path = "/g")
-    public final static class DecodedMessage {
+      @Override
+      public String getInitParameter(String name) {
+        return null;
+      }
 
-        @Get
-        public void get(AtmosphereResource resource) {
-            r.set(resource);
-            resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                @Override
-                public void onSuspend(AtmosphereResourceEvent event) {
-                    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/g").method("POST").body("message").build();
-                    try {
-                        event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } catch (ServletException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }).suspend();
+      @Override
+      public Enumeration<String> getInitParameterNames() {
+        return null;
+      }
+    });
+    latch.set(new CountDownLatch(1));
+  }
 
-        }
+  @AfterMethod
+  public void after() {
+    r.set(null);
+    framework.destroy();
+  }
 
-        @Message(decoders = {StringBufferDecoder.class})
-        public void decode(StringBuffer m) {
-            message.set(m.toString());
-        }
-    }
+  @ManagedService(path = "/f")
+  public final static class ManagedMessage {
 
-    @ManagedService(path = "/h")
-    public final static class EncodedMessage {
-
-        @Get
-        public void get(AtmosphereResource resource) {
-            r.set(resource);
-            resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                @Override
-                public void onSuspend(AtmosphereResourceEvent event) {
-                    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/h").method("POST").body("message").build();
-                    try {
-                        event.getResource().addEventListener(new AtmosphereResourceEventListenerAdapter() {
-                            @Override
-                            public void onBroadcast(AtmosphereResourceEvent event) {
-                                latch.get().countDown();
-                            }
-                        });
-                        event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
-
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } catch (ServletException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }).suspend();
-
-        }
-
-        @Message(encoders = {StringBufferEncoder.class}, decoders = {StringBufferDecoder.class})
-        public StringBuffer encode(StringBuffer m) {
-            message.set(m.toString());
-            return m;
-        }
-    }
-
-    public final static class StringBufferEncoder implements Encoder<StringBuffer, String> {
-
+    @Get
+    public void get(AtmosphereResource resource) {
+      r.set(resource);
+      resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
         @Override
-        public String encode(StringBuffer s) {
-            return s.toString() + "-yo!";
+        public void onSuspend(AtmosphereResourceEvent event) {
+          AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/f").method("POST").body("message").build();
+          try {
+            event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
+          } catch (IOException e) {
+            e.printStackTrace();
+          } catch (ServletException e) {
+            e.printStackTrace();
+          }
         }
+      }).suspend();
+
     }
 
-    public final static class StringBufferDecoder implements Decoder<String, StringBuffer> {
+    @Message(encoders = {StringBufferEncoder.class}, decoders = {StringBufferDecoder.class})
+    public void message(StringBuffer m) {
+      message.set(m.toString());
+    }
+  }
 
+  @ManagedService(path = "/g")
+  public final static class DecodedMessage {
+
+    @Get
+    public void get(AtmosphereResource resource) {
+      r.set(resource);
+      resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
         @Override
-        public StringBuffer decode(String s) {
-            return new StringBuffer(s);
+        public void onSuspend(AtmosphereResourceEvent event) {
+          AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/g").method("POST").body("message").build();
+          try {
+            event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
+          } catch (IOException e) {
+            e.printStackTrace();
+          } catch (ServletException e) {
+            e.printStackTrace();
+          }
         }
-    }
-
-    @Test
-    public void testMessage() throws IOException, ServletException, InterruptedException {
-
-        AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/f").method("GET").build();
-        framework.doCometSupport(request, AtmosphereResponse.newInstance());
-        assertNotNull(r.get());
-        r.get().resume();
-        assertNotNull(message.get());
-        assertEquals(message.get(), "message");
+      }).suspend();
 
     }
 
-    @Test
-    public void testDecoder() throws IOException, ServletException, InterruptedException {
+    @Message(decoders = {StringBufferDecoder.class})
+    public void decode(StringBuffer m) {
+      message.set(m.toString());
+    }
+  }
 
-        AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/g").method("GET").build();
-        framework.doCometSupport(request, AtmosphereResponse.newInstance());
-        assertNotNull(r.get());
-        r.get().resume();
-        assertNotNull(message.get());
-        assertEquals(message.get(), "message");
+  @ManagedService(path = "/h")
+  public final static class EncodedMessage {
+
+    @Get
+    public void get(AtmosphereResource resource) {
+      r.set(resource);
+      resource.addEventListener(new AtmosphereResourceEventListenerAdapter() {
+        @Override
+        public void onSuspend(AtmosphereResourceEvent event) {
+          AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/h").method("POST").body("message").build();
+          try {
+            event.getResource().addEventListener(new AtmosphereResourceEventListenerAdapter() {
+              @Override
+              public void onBroadcast(AtmosphereResourceEvent event) {
+                latch.get().countDown();
+              }
+            });
+            event.getResource().getAtmosphereConfig().framework().doCometSupport(request, AtmosphereResponse.newInstance());
+
+          } catch (IOException e) {
+            e.printStackTrace();
+          } catch (ServletException e) {
+            e.printStackTrace();
+          }
+        }
+      }).suspend();
 
     }
 
-    @Test
-    public void testEncoder() throws IOException, ServletException, InterruptedException {
-
-        AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/h").method("GET").build();
-        AtmosphereResponse response = AtmosphereResponse.newInstance();
-        final AtomicReference<String> ref = new AtomicReference();
-
-        response.asyncIOWriter(new AsyncIOWriterAdapter() {
-            @Override
-            public AsyncIOWriter write(AtmosphereResponse r, byte[] data) throws IOException {
-                ref.set(new String(data));
-                return this;
-            }
-        });
-        framework.doCometSupport(request, response);
-        assertNotNull(r.get());
-        latch.get().await(5, TimeUnit.SECONDS);
-        r.get().resume();
-        assertNotNull(message.get());
-        assertEquals(message.get(), "message");
-        assertEquals(ref.get(), "message-yo!");
-
+    @Message(encoders = {StringBufferEncoder.class}, decoders = {StringBufferDecoder.class})
+    public StringBuffer encode(StringBuffer m) {
+      message.set(m.toString());
+      return m;
     }
+  }
+
+  public final static class StringBufferEncoder implements Converter<StringBuffer> {
+
+    @Override
+    public Object convert(StringBuffer s, Class<?> convertToType) {
+      return s.toString() + "-yo!";
+    }
+  }
+
+  public final static class StringBufferDecoder implements Converter<String> {
+
+    @Override
+    public Object convert(String s, Class<?> convertToType) {
+      return new StringBuffer(s);
+    }
+  }
+
+  @Test
+  public void testMessage() throws IOException, ServletException, InterruptedException {
+
+    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/f").method("GET").build();
+    framework.doCometSupport(request, AtmosphereResponse.newInstance());
+    assertNotNull(r.get());
+    r.get().resume();
+    assertNotNull(message.get());
+    assertEquals(message.get(), "message");
+
+  }
+
+  @Test
+  public void testDecoder() throws IOException, ServletException, InterruptedException {
+
+    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/g").method("GET").build();
+    framework.doCometSupport(request, AtmosphereResponse.newInstance());
+    assertNotNull(r.get());
+    r.get().resume();
+    assertNotNull(message.get());
+    assertEquals(message.get(), "message");
+
+  }
+
+  @Test
+  public void testEncoder() throws IOException, ServletException, InterruptedException {
+
+    AtmosphereRequest request = new AtmosphereRequest.Builder().pathInfo("/h").method("GET").build();
+    AtmosphereResponse response = AtmosphereResponse.newInstance();
+    final AtomicReference<String> ref = new AtomicReference<String>();
+
+    response.asyncIOWriter(new AsyncIOWriterAdapter() {
+      @Override
+      public AsyncIOWriter write(AtmosphereResponse r, byte[] data) throws IOException {
+        ref.set(new String(data));
+        return this;
+      }
+    });
+    framework.doCometSupport(request, response);
+    assertNotNull(r.get());
+    latch.get().await(5, TimeUnit.SECONDS);
+    r.get().resume();
+    assertNotNull(message.get());
+    assertEquals(message.get(), "message");
+    assertEquals(ref.get(), "message-yo!");
+
+  }
 }
